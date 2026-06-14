@@ -1,0 +1,114 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+*, *::before, *::after { box-sizing: border-box; }
+
+:root {
+  --bg-base:       #1C1917;
+  --bg-surface:    #292524;
+  --bg-deep:       #111110;
+  --bg-hover:      #3C3836;
+  --border:        #44403C;
+  --border-subtle: #2C2A28;
+  --text-primary:  #FAFAF9;
+  --text-muted:    #A8A29E;
+  --text-dim:      #78716C;
+  --accent:        #F59E0B;
+  --accent-dim:    #92400E;
+  --danger:        #EF4444;
+  --danger-dim:    #450A0A;
+  --success:       #4ADE80;
+  --success-dim:   #052E16;
+}
+
+body {
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* The root app div gets the grain texture */
+#app {
+  background-color: var(--bg-base);
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 200px 200px;
+  min-height: 100vh;
+}
+
+.mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-base); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--bg-hover); }
+
+/* Section label divider */
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.section-label span {
+  font-size: 10px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+/* Loading animation */
+@keyframes fadeInLine {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+/* Bar fill animation */
+@keyframes growWidth {
+  from { width: 0%; }
+}
+
+/* Stagger delays for terminal lines */
+.terminal-line-1 { animation: fadeInLine 0.3s ease forwards; }
+.terminal-line-2 { opacity: 0; animation: fadeInLine 0.3s ease 0.4s forwards; }
+.terminal-line-3 { opacity: 0; animation: fadeInLine 0.3s ease 0.8s forwards; }
+.terminal-cursor { animation: blink 0.5s step-end infinite; }
+
+/* Mobile: hide sidebar, show bottom nav */
+@media (max-width: 768px) {
+  .sidebar-fixed {
+    display: none !important;
+  }
+  .mobile-nav {
+    display: flex !important;
+  }
+  .main-layout {
+    flex-direction: column !important;
+  }
+  .content-area {
+    padding: 16px !important;
+  }
+}
