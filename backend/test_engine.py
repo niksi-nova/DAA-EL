@@ -69,7 +69,7 @@ def print_header(title: str) -> None:
 
 def main() -> None:
     # ── Precondition check ───────────────────────────────────────────────────
-    print_header("DAA Project — Engine Correctness & Performance Test")
+    print_header("DAA Project - Engine Correctness & Performance Test")
 
     if not os.path.exists(TEST_FILE):
         print(f"{RED}ERROR: Test file not found:{RESET}")
@@ -82,8 +82,18 @@ def main() -> None:
     print(f"File size : {file_size_mb:.2f} MB")
     print(f"Threads   : {NUM_THREADS}")
 
+    # ── Warm the OS page cache BEFORE any timed run ─────────────────────────
+    # The sequential run always goes first. Without a warm-up read, it would
+    # pay the cold-disk-read cost while parallel/mmap runs that follow benefit
+    # from a cache the sequential run just warmed up for them — skewing the
+    # speedup numbers. A throwaway read here puts all three methods on equal
+    # footing.
+    with open(TEST_FILE, "rb") as _f:
+        while _f.read(1024 * 1024):
+            pass
+
     # ── STEP 1: Run Sequential Analysis ─────────────────────────────────────
-    print_header("Step 1 — Sequential Analysis (Baseline)")
+    print_header("Step 1 - Sequential Analysis (Baseline)")
     print("Running single-threaded scan...")
 
     seq_counts, seq_time = sequential.analyze_sequential(TEST_FILE)
@@ -96,13 +106,13 @@ def main() -> None:
     print(f"\n  Time: {seq_time * 1000:.2f} ms")
 
     # ── STEP 2: Run Parallel Analysis ────────────────────────────────────────
-    print_header(f"Step 2 — Parallel Analysis ({NUM_THREADS} threads)")
+    print_header(f"Step 2 - Parallel Analysis ({NUM_THREADS} threads)")
     print("Computing byte-range chunks...")
 
     chunks = chunker.get_chunks(TEST_FILE, NUM_THREADS)
     print(f"  Chunk boundaries (byte ranges):")
     for i, (start, end) in enumerate(chunks):
-        print(f"    Thread {i}: bytes [{start:>10,} → {end:>10,}]  "
+        print(f"    Thread {i}: bytes [{start:>10,} -> {end:>10,}]  "
               f"({(end - start) / 1024:.1f} KB)")
 
     print("\nRunning parallel analysis...")
@@ -116,7 +126,7 @@ def main() -> None:
     print(f"\n  Time: {par_time * 1000:.2f} ms")
 
     # ── STEP 3: Correctness Assertion ────────────────────────────────────────
-    print_header("Step 3 — Correctness Verification")
+    print_header("Step 3 - Correctness Verification")
     print("Asserting: sequential counts == parallel counts for every level...\n")
 
     all_passed = True
@@ -125,7 +135,7 @@ def main() -> None:
         par_val = par_counts[level]
         match = seq_val == par_val
         status = f"{GREEN}PASS{RESET}" if match else f"{RED}FAIL{RESET}"
-        diff_str = "" if match else f"  ← DIFFERENCE: {abs(seq_val - par_val):,}"
+        diff_str = "" if match else f"  <- DIFFERENCE: {abs(seq_val - par_val):,}"
         print(f"  [{status}] {level:<10}  seq={seq_val:>8,}  par={par_val:>8,}{diff_str}")
         if not match:
             all_passed = False
@@ -133,22 +143,22 @@ def main() -> None:
     # Total line count assertion.
     total_match = seq_total == par_total
     status = f"{GREEN}PASS{RESET}" if total_match else f"{RED}FAIL{RESET}"
-    diff_str = "" if total_match else f"  ← DIFFERENCE: {abs(seq_total - par_total):,}"
+    diff_str = "" if total_match else f"  <- DIFFERENCE: {abs(seq_total - par_total):,}"
     print(f"\n  [{status}] {'TOTAL':<10}  seq={seq_total:>8,}  par={par_total:>8,}{diff_str}")
     if not total_match:
         all_passed = False
 
     # ── STEP 4: Performance Metrics ──────────────────────────────────────────
-    print_header("Step 4 — Performance Metrics")
+    print_header("Step 4 - Performance Metrics")
 
     perf = metrics.compute_metrics(seq_time, par_time, NUM_THREADS)
     theoretical = metrics.amdahl_speedup(NUM_THREADS, serial_fraction=0.05)
 
     print(f"  Sequential time   : {perf['sequential_time_ms']:>8.2f} ms")
     print(f"  Parallel time     : {perf['parallel_time_ms']:>8.2f} ms")
-    print(f"  ──────────────────────────────────")
-    print(f"  Actual speedup    : {perf['speedup']:>8.3f}×")
-    print(f"  Theoretical (S=5%): {theoretical:>8.3f}×  (Amdahl's Law)")
+    print(f"  " + "-" * 36)
+    print(f"  Actual speedup    : {perf['speedup']:>8.3f}x")
+    print(f"  Theoretical (S=5%): {theoretical:>8.3f}x  (Amdahl's Law)")
     print(f"  Efficiency        : {perf['efficiency_pct']:>7.1f}%  "
           f"(ideal = 100%)")
     print(f"  Threads used      : {perf['num_threads']}")
@@ -163,7 +173,7 @@ def main() -> None:
     # truth.  A fast wrong answer is WORSE than a slow correct one: it would
     # make mmap appear more accurate than it is, skewing the comparison.
     # Always gate performance claims behind a correctness assertion.
-    print_header("Step 5 — mmap Parallel Analysis (third method)")
+    print_header("Step 5 - mmap Parallel Analysis (third method)")
     print("Running memory-mapped parallel analysis (same chunks, shared mmap)...")
 
     mmap_counts, mmap_time = analyze_parallel_mmap(TEST_FILE, chunks)
@@ -184,14 +194,14 @@ def main() -> None:
         mmap_val = mmap_counts[level]
         match    = seq_val == mmap_val
         status   = f"{GREEN}PASS{RESET}" if match else f"{RED}FAIL{RESET}"
-        diff_str = "" if match else f"  ← DIFFERENCE: {abs(seq_val - mmap_val):,}"
+        diff_str = "" if match else f"  <- DIFFERENCE: {abs(seq_val - mmap_val):,}"
         print(f"  [{status}] {level:<10}  seq={seq_val:>8,}  mmap={mmap_val:>8,}{diff_str}")
         if not match:
             mmap_all_passed = False
 
     mmap_total_match = (seq_total == mmap_total)
     status   = f"{GREEN}PASS{RESET}" if mmap_total_match else f"{RED}FAIL{RESET}"
-    diff_str = "" if mmap_total_match else f"  ← DIFFERENCE: {abs(seq_total - mmap_total):,}"
+    diff_str = "" if mmap_total_match else f"  <- DIFFERENCE: {abs(seq_total - mmap_total):,}"
     print(f"\n  [{status}] {'TOTAL':<10}  seq={seq_total:>8,}  mmap={mmap_total:>8,}{diff_str}")
     if not mmap_total_match:
         mmap_all_passed = False
@@ -202,16 +212,16 @@ def main() -> None:
         all_passed = False
 
     # ── mmap performance comparison ──────────────────────────────────────────
-    print_header("Step 5b — mmap Performance Comparison")
+    print_header("Step 5b - mmap Performance Comparison")
 
     mmap_ms            = round(mmap_time  * 1000, 3)
     speedup_vs_seq     = round(seq_time   / mmap_time, 3)
     speedup_vs_par     = round(par_time   / mmap_time, 3)
 
     print(f"  mmap parallel time      : {mmap_ms:>8.2f} ms")
-    print(f"  ──────────────────────────────────────────")
-    print(f"  Speedup over sequential : {speedup_vs_seq:>8.3f}×")
-    print(f"  Speedup over parallel   : {speedup_vs_par:>8.3f}×")
+    print(f"  " + "-" * 42)
+    print(f"  Speedup over sequential : {speedup_vs_seq:>8.3f}x")
+    print(f"  Speedup over parallel   : {speedup_vs_par:>8.3f}x")
     print()
 
     # INTERPRETING THE mmap vs. PARALLEL SPEEDUP NUMBER:
@@ -243,7 +253,7 @@ def main() -> None:
         verdict = f"{YELLOW}mmap is slightly slower (overhead-dominated at this file size){RESET}"
 
     print(f"  Interpretation: {verdict}")
-    print(f"\n  (On Apple M5 Pro: expect {YELLOW}0.9× – 2.5×{RESET} due to warm SSD page cache)")
+    print(f"\n  (On Apple M5 Pro: expect {YELLOW}0.9x - 2.5x{RESET} due to warm SSD page cache)")
 
     # ── Final verdict ────────────────────────────────────────────────────────
     print_header("Final Result")

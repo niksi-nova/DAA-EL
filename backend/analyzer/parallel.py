@@ -85,9 +85,10 @@
 #   and is an important teaching moment about parallel algorithm overhead.
 # =============================================================================
 
+import os
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor, Future
+from concurrent.futures import ProcessPoolExecutor, Future
 from typing import Dict, List, Tuple
 
 # Compile the regex pattern ONCE at module load (same reasoning as in
@@ -168,6 +169,7 @@ def _process_chunk(filepath: str, start_byte: int, end_byte: int) -> Dict[str, i
 def analyze_parallel(
     filepath: str,
     chunks: List[Tuple[int, int]],
+    executor: "ProcessPoolExecutor | None" = None,
 ) -> Tuple[Dict[str, int], float]:
     """
     Orchestrate the parallel analysis: submit MAP tasks, collect results,
@@ -203,21 +205,32 @@ def analyze_parallel(
     start_time = time.perf_counter()
 
     # ── MAP PHASE ────────────────────────────────────────────────────────────
-    # Submit one _process_chunk task per chunk.  ThreadPoolExecutor manages
-    # a pool of at most `num_threads` OS threads.  submit() is non-blocking —
+    # Submit one _process_chunk task per chunk.  submit() is non-blocking —
     # it enqueues the work and immediately returns a Future object.
     #
     # We collect all futures in a list so we can wait for ALL of them before
     # starting the reduce phase (no partial merges — this keeps the design simple
     # and avoids the complexity of streaming reduction).
+    #
+    # If the caller passed a pre-built `executor` (e.g. app.py's persistent,
+    # process-wide pool), reuse it instead of spawning/tearing down a fresh
+    # ProcessPoolExecutor on every call — process creation has real OS
+    # overhead, so a persistent pool avoids paying it on every request.
     futures: List[Future] = []
-    with ThreadPoolExecutor(max_workers=num_threads) as executor:
+    if executor is not None:
         for start_byte, end_byte in chunks:
-            future = executor.submit(_process_chunk, filepath, start_byte, end_byte)
-            futures.append(future)
-        # The 'with' block blocks here until ALL submitted tasks are complete.
-        # This is equivalent to calling executor.shutdown(wait=True).
-        # It is the correct and idiomatic way to use ThreadPoolExecutor.
+            futures.append(executor.submit(_process_chunk, filepath, start_byte, end_byte))
+        for future in futures:
+            future.result()  # propagate any worker exception now
+    else:
+        with ProcessPoolExecutor(max_workers=num_threads) as local_executor:
+            for start_byte, end_byte in chunks:
+                future = local_executor.submit(_process_chunk, filepath, start_byte, end_byte)
+                futures.append(future)
+            # The 'with' block blocks here until ALL submitted tasks are complete.
+            # ProcessPoolExecutor spawns real OS processes, each with its own GIL,
+            # so the CPU-bound decode/regex work actually runs concurrently across
+            # cores instead of being serialised by a single shared GIL.
 
     # ── REDUCE PHASE ─────────────────────────────────────────────────────────
     # All threads have finished.  We are now single-threaded again (the main
@@ -314,7 +327,7 @@ def analyze_parallel(
 
 
 def _process_chunk_mmap(
-    mm,           # mmap.mmap object — shared read-only view of the file
+    filepath: str,
     start_byte: int,
     end_byte: int,
 ) -> Dict[str, int]:
@@ -372,22 +385,23 @@ def _process_chunk_mmap(
                       each thread also holds N/T bytes in memory; the total
                       footprint is similar.)
     """
-    # Thread-private count accumulator.  No lock needed — fully local.
+    # Process-private count accumulator.  No lock needed — fully local.
     counts: Dict[str, int] = {level: 0 for level in LOG_LEVELS}
 
-    # ── Slice the mapped memory — thread-safe, no shared cursor touched ──────
-    # mm[start_byte:end_byte] performs a direct byte copy from the mmap's
-    # virtual memory pages.  The GIL is released during this C-level copy,
-    # so other threads can proceed concurrently.
-    chunk_bytes: bytes = mm[start_byte:end_byte]
+    # mmap.mmap objects cannot be pickled across a process boundary (each
+    # process has its own virtual address space), so each worker process
+    # opens its OWN mapping of the same file.  The underlying OS page cache
+    # is still shared across processes — once one worker has paged in a
+    # region, the others read it straight from RAM, not disk.
+    import mmap
+    with open(filepath, "rb") as f, mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+        chunk_bytes: bytes = mm[start_byte:end_byte]
 
     # Decode bytes to str.  errors='ignore' silently skips non-UTF-8 bytes —
     # same policy as _process_chunk() for consistency.
     chunk_text: str = chunk_bytes.decode("utf-8", errors="ignore")
 
     # Scan line by line.  splitlines() handles all common line endings.
-    # We reuse the module-level LOG_LEVEL_PATTERN — compiled once, read-only,
-    # therefore safe to call from multiple threads simultaneously.
     for line in chunk_text.splitlines():
         match = LOG_LEVEL_PATTERN.search(line)
         if match:
@@ -400,6 +414,7 @@ def _process_chunk_mmap(
 def analyze_parallel_mmap(
     filepath: str,
     chunks: List[Tuple[int, int]],
+    executor: "ProcessPoolExecutor | None" = None,
 ) -> Tuple[Dict[str, int], float]:
     """
     Orchestrate the mmap-backed parallel analysis.
@@ -471,70 +486,53 @@ def analyze_parallel_mmap(
                       O(1) physical RAM overhead per thread beyond the
                       page cache (which would hold the data anyway).
     """
-    # Import mmap here (not at the module top) so we don't alter the existing
-    # import block above, in keeping with the "add only, don't touch above" rule.
-    import mmap
-
     num_threads = len(chunks)
 
-    # ── Start the timer BEFORE mmap setup ───────────────────────────────────
-    # We include mmap creation time in the measurement because it is a real
-    # cost of this approach.  A fair comparison must count ALL costs.
+    # ── Start the timer ──────────────────────────────────────────────────────
     start_time = time.perf_counter()
 
-    # Open in binary mode — mmap requires a real OS file descriptor (fileno()).
-    # This is the ONE file handle we open; all threads share the mmap derived
-    # from it.  The file handle itself is only used to create the mmap and can
-    # be closed after; the mmap remains valid independently.
-    with open(filepath, "rb") as f:
-        # mmap.mmap(fileno, length=0, access=ACCESS_READ):
-        #   fileno  : OS file descriptor from f.fileno()
-        #   length=0: map the ENTIRE file (0 is a special sentinel meaning
-        #             "use the actual file size" — the OS fills this in)
-        #   ACCESS_READ: read-only mapping.  The OS will raise an exception
-        #             if any code attempts to write to mm[...].  This is the
-        #             correct access mode for our use case and is also a
-        #             safety guarantee: no thread can corrupt the mapped data.
-        mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
+    # EDGE CASE: mmap.mmap() raises "ValueError: cannot mmap an empty file"
+    # on a 0-byte file — there is no page to map.  chunker.get_chunks() already
+    # returns [(0, 0)] * num_threads for empty files, so we can short-circuit
+    # here instead of touching mmap at all.
+    if os.path.getsize(filepath) == 0:
+        elapsed = time.perf_counter() - start_time
+        return {level: 0 for level in LOG_LEVELS}, elapsed
 
-    # The file handle `f` is now closed (exited the `with` block), but `mm`
-    # remains valid — the mmap holds its own reference to the underlying file.
-    # This is standard and documented behaviour in Python's mmap module.
-
-    try:
-        # ── MAP PHASE ────────────────────────────────────────────────────────
-        # Submit one _process_chunk_mmap task per chunk.
-        # Each task receives the SAME `mm` object — they all read different
-        # byte ranges from the same shared memory mapping.
-        # No locks are needed because:
-        #   1. All threads only READ mm (ACCESS_READ mode).
-        #   2. They use slice notation (no shared cursor contention).
-        #   3. They write only to their own LOCAL counts dicts.
-        futures: List[Future] = []
-        with ThreadPoolExecutor(max_workers=num_threads) as executor:
+    # ── MAP PHASE ────────────────────────────────────────────────────────────
+    # Submit one _process_chunk_mmap task per chunk.  Each worker process opens
+    # its own mmap of `filepath` (mmap objects cannot be pickled across a
+    # process boundary), then reads its byte range from it.
+    # No locks are needed because:
+    #   1. All workers only READ their mapping (ACCESS_READ mode).
+    #   2. They use slice notation (no shared cursor contention).
+    #   3. They write only to their own LOCAL counts dicts.
+    # If the caller passed a pre-built `executor` (app.py's persistent pool),
+    # reuse it instead of spawning a fresh ProcessPoolExecutor per call.
+    futures: List[Future] = []
+    if executor is not None:
+        for start_byte, end_byte in chunks:
+            futures.append(executor.submit(_process_chunk_mmap, filepath, start_byte, end_byte))
+        for future in futures:
+            future.result()  # propagate any worker exception now
+    else:
+        with ProcessPoolExecutor(max_workers=num_threads) as local_executor:
             for start_byte, end_byte in chunks:
-                future = executor.submit(
-                    _process_chunk_mmap, mm, start_byte, end_byte
+                future = local_executor.submit(
+                    _process_chunk_mmap, filepath, start_byte, end_byte
                 )
                 futures.append(future)
-            # Context manager exit: blocks until ALL threads complete.
+            # Context manager exit: blocks until ALL workers complete.
 
-        # ── REDUCE PHASE ─────────────────────────────────────────────────────
-        # Identical merge pattern to analyze_parallel().
-        # This is the REDUCE step of Map-Reduce: sum T partial dicts of size 5.
-        # O(T * 5) = O(T) — negligible.
-        merged: Dict[str, int] = {level: 0 for level in LOG_LEVELS}
-        for future in futures:
-            partial_counts = future.result()
-            for level in LOG_LEVELS:
-                merged[level] += partial_counts[level]
-
-    finally:
-        # Always close the mmap, even if an exception occurred.
-        # mm.close() releases the virtual address space mapping and decrements
-        # the OS reference count on the file pages.  Forgetting to close is a
-        # resource leak (virtual address space exhaustion on long-running servers).
-        mm.close()
+    # ── REDUCE PHASE ─────────────────────────────────────────────────────────
+    # Identical merge pattern to analyze_parallel().
+    # This is the REDUCE step of Map-Reduce: sum T partial dicts of size 5.
+    # O(T * 5) = O(T) — negligible.
+    merged: Dict[str, int] = {level: 0 for level in LOG_LEVELS}
+    for future in futures:
+        partial_counts = future.result()
+        for level in LOG_LEVELS:
+            merged[level] += partial_counts[level]
 
     # ── Stop the timer ───────────────────────────────────────────────────────
     elapsed = time.perf_counter() - start_time

@@ -22,12 +22,12 @@
 #   GET  /results/<job_id>     → Retrieve a previously stored result by job ID
 #   GET  /health               → Liveness probe
 #
-# IN-MEMORY RESULTS STORE:
-#   We store results in a plain Python dict (results_store) keyed by job_id.
-#   TRADEOFF: Simple for a university project — no database setup required,
-#   works out of the box.  In production this would use Redis or PostgreSQL
-#   so results persist across server restarts and scale to multiple workers.
-#   The current store is lost when the Flask process exits.
+# RESULTS PERSISTENCE:
+#   Results are stored in a local SQLite file (backend/results.db) keyed by
+#   job_id — see db.py. This survives server restarts, unlike the in-memory
+#   dict this project started with. Still single-file and zero-setup, which
+#   is the right tradeoff for a university project; a production deployment
+#   serving multiple machines would use Redis or PostgreSQL instead.
 #
 # FILE LIFECYCLE:
 #   1. Client uploads file via multipart/form-data.
@@ -39,13 +39,16 @@
 #   Deleting immediately is the correct default for a stateless analysis service.
 # =============================================================================
 
+import atexit
 import os
 import uuid
+from concurrent.futures import ProcessPoolExecutor
 
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
+import db
 from analyzer import chunker, sequential, parallel, metrics
 from analyzer.parallel import analyze_parallel_mmap  # mmap-backed parallel variant
 
@@ -64,14 +67,40 @@ UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "upload
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # ---------------------------------------------------------------------------
-# In-memory results cache
+# Persistent worker pool
 # ---------------------------------------------------------------------------
-# Maps job_id (str) → result dict (serialisable to JSON).
-# Thread safety note: Flask's development server is single-threaded by
-# default.  In a multi-worker production deployment (Gunicorn), this dict
-# would NOT be shared across workers and results_store would need to be
-# replaced with Redis or a database.  For this project, single-worker is fine.
-results_store: dict = {}
+# Spawning a ProcessPoolExecutor is not free: each worker is a brand-new OS
+# process, which on Windows in particular involves a comparatively expensive
+# CreateProcess call plus Python re-importing every module in the worker.
+# Creating and tearing down a pool on EVERY /analyze or /benchmark request
+# pays that cost repeatedly for no benefit, since the same pool can safely
+# service many requests one after another.
+#
+# We create ONE pool when the Flask process starts and reuse it for the
+# lifetime of the server. max_workers is set high enough (32) to cover the
+# largest thread count we ever request (clamped to 32 in /analyze, and the
+# THREAD_COUNTS sweep in /benchmark tops out at 16) — submitting fewer tasks
+# than max_workers simply leaves the extra worker processes idle.
+#
+# WHY THIS IS GUARDED BY if __name__ == "__main__" (at the bottom of this
+# file) RATHER THAN CREATED HERE AT IMPORT TIME:
+# ProcessPoolExecutor uses the 'spawn' start method on macOS/Windows, which
+# launches each worker as a fresh Python interpreter that RE-IMPORTS this
+# module (as '__mp_main__', not '__main__'). If pool creation happened at
+# plain module level, every worker process would execute this line again on
+# import and spawn its OWN 32-process pool, which would each spawn 32 more,
+# recursively — a fork bomb. Creating it only inside the `if __name__ ==
+# "__main__":` guard ensures only the original parent process builds the pool.
+WORKER_POOL: "ProcessPoolExecutor | None" = None
+
+# ---------------------------------------------------------------------------
+# Results persistence (SQLite)
+# ---------------------------------------------------------------------------
+# Previously results were cached in a plain Python dict, which is wiped on
+# every server restart. db.py stores each job's result as a row in a local
+# SQLite file (results.db) so GET /results/<job_id> keeps working even after
+# the Flask process has been stopped and started again.
+db.init_db()
 
 # ---------------------------------------------------------------------------
 # Configuration: allowed file extensions (basic security guard).
@@ -83,6 +112,21 @@ ALLOWED_EXTENSIONS = {"log", "txt"}
 def _allowed_file(filename: str) -> bool:
     """Return True if the filename has an allowed extension."""
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def _warm_page_cache(filepath: str) -> None:
+    """
+    Read the file once and throw the result away, before any timer starts.
+
+    Without this, the sequential run (which always goes first) pays the cold
+    disk-read cost while every parallel/mmap run that follows benefits from
+    an OS page cache that the sequential run just warmed up for them. That
+    asymmetry inflates the measured speedup. Warming the cache up front
+    before ANY timed run starts puts all three methods on equal footing.
+    """
+    with open(filepath, "rb") as f:
+        while f.read(1024 * 1024):
+            pass
 
 
 def _save_upload(file_storage, job_id: str) -> str:
@@ -175,6 +219,11 @@ def analyze() -> Response:
         # O(T) time, O(T) space — see chunker.py for full explanation.
         chunks = chunker.get_chunks(filepath, num_threads)
 
+        # Warm the OS page cache BEFORE any timed run, so the sequential
+        # baseline isn't unfairly penalised by a cold-disk read that the
+        # later parallel/mmap runs wouldn't have to pay.
+        _warm_page_cache(filepath)
+
         # ── Sequential baseline (control variable) ──────────────────────────
         # Run the single-threaded analysis FIRST so we have the ground truth
         # counts to verify against the parallel result (correctness before speed).
@@ -182,7 +231,7 @@ def analyze() -> Response:
 
         # ── Parallel analysis (experimental variable) ────────────────────────
         # Run the multi-threaded analysis.
-        par_counts, par_time = parallel.analyze_parallel(filepath, chunks)
+        par_counts, par_time = parallel.analyze_parallel(filepath, chunks, executor=WORKER_POOL)
 
         # ── mmap-backed parallel analysis (third method) ─────────────────────
         # We run all three methods so the frontend can display a three-way
@@ -191,7 +240,7 @@ def analyze() -> Response:
         # lets all threads read their chunks directly from RAM (after the OS
         # page cache is warm from the sequential and parallel passes above).
         # This gives us the best-case read throughput for the given hardware.
-        mmap_counts, mmap_time = analyze_parallel_mmap(filepath, chunks)
+        mmap_counts, mmap_time = analyze_parallel_mmap(filepath, chunks, executor=WORKER_POOL)
 
         # ── Compute performance metrics ──────────────────────────────────────
         perf_metrics = metrics.compute_metrics(seq_time, par_time, num_threads)
@@ -213,8 +262,9 @@ def analyze() -> Response:
             "mmap_time_ms":  round(mmap_time * 1000, 2),
         }
 
-        # Cache the result for later retrieval via GET /results/<job_id>.
-        results_store[job_id] = result
+        # Persist the result for later retrieval via GET /results/<job_id>,
+        # surviving a server restart (see db.py for why SQLite over a dict).
+        db.save_result(job_id, original_filename, result)
 
         return jsonify(result), 200
 
@@ -286,6 +336,12 @@ def benchmark() -> Response:
     try:
         file_size_kb = round(os.path.getsize(filepath) / 1024, 2)
 
+        # Warm the OS page cache before the very first timed run (see
+        # _warm_page_cache docstring) so the sequential baseline isn't
+        # measuring cold-disk I/O while every later thread-count run benefits
+        # from a cache that previous runs already warmed up.
+        _warm_page_cache(filepath)
+
         # ── Sequential baseline — run ONCE ───────────────────────────────────
         # We run the sequential analysis exactly once.  All speedup ratios are
         # computed relative to this single measurement, which is the standard
@@ -304,7 +360,7 @@ def benchmark() -> Response:
             chunks = chunker.get_chunks(filepath, t)
 
             # Run parallel analysis and record time.
-            _par_counts, par_time = parallel.analyze_parallel(filepath, chunks)
+            _par_counts, par_time = parallel.analyze_parallel(filepath, chunks, executor=WORKER_POOL)
 
             # Compute metrics for this thread count.
             m = metrics.compute_metrics(seq_time, par_time, t)
@@ -352,16 +408,16 @@ def get_result(job_id: str) -> Response:
 
     This allows a client to:
       1. POST /analyze → receive job_id immediately
-      2. GET /results/<job_id> → fetch the cached result at any later time
-         (within the current server session)
+      2. GET /results/<job_id> → fetch the result at any later time, even
+         across a server restart, since results are persisted in SQLite.
 
-    In-memory store lookup is O(1) average (dict hash table lookup).
+    SQLite primary-key lookup is O(log n) via its B-tree index — negligible
+    for the scale of this project.
     """
-    result = results_store.get(job_id)
+    result = db.get_result(job_id)
     if result is None:
         return jsonify({
-            "error": f"No result found for job_id '{job_id}'. "
-                     f"Results are stored in memory and are lost on server restart."
+            "error": f"No result found for job_id '{job_id}'."
         }), 404
 
     return jsonify(result), 200
@@ -385,10 +441,18 @@ def health() -> Response:
 # Entry point
 # =============================================================================
 if __name__ == "__main__":
+    # Build the persistent worker pool now — see the WORKER_POOL comment
+    # above for why this must stay inside this guard.
+    WORKER_POOL = ProcessPoolExecutor(max_workers=32)
+    atexit.register(WORKER_POOL.shutdown)
+
     # debug=True enables:
     #   - Auto-reload when source files change (no need to restart manually)
     #   - Detailed error pages with stack traces in the browser
     # NEVER use debug=True in production — it exposes an interactive debugger.
+    # use_reloader=False because the reloader forks a second process that
+    # would otherwise duplicate the worker pool; we already get fast restarts
+    # are not critical for this project's local dev workflow.
     #
     # port=5000 is the Flask default.  Change if it conflicts with another service.
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5000, use_reloader=False)

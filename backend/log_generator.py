@@ -153,7 +153,7 @@ def generate_log_file(filepath: str, num_lines: int) -> None:
     # Start 30 days in the past so the log file looks like real history.
     current_time = datetime(2025, 1, 1, 0, 0, 0)
 
-    print(f"  Generating {num_lines:,} lines → {os.path.basename(filepath)}")
+    print(f"  Generating {num_lines:,} lines -> {os.path.basename(filepath)}")
 
     with open(filepath, "w", encoding="utf-8") as f:
         for i in range(num_lines):
@@ -177,7 +177,7 @@ def generate_log_file(filepath: str, num_lines: int) -> None:
                 print(f"    ... {i + 1:,} lines written")
 
     size_mb = os.path.getsize(filepath) / (1024 * 1024)
-    print(f"  Done — {size_mb:.2f} MB\n")
+    print(f"  Done - {size_mb:.2f} MB\n")
 
 
 def main() -> None:
@@ -200,7 +200,7 @@ def main() -> None:
     ]
 
     print("=" * 60)
-    print("  Log Generator — DAA Algorithms Project")
+    print("  Log Generator - DAA Algorithms Project")
     print("=" * 60 + "\n")
 
     for filename, num_lines in files:
