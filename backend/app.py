@@ -52,6 +52,36 @@ import db
 from analyzer import chunker, sequential, parallel, metrics
 from analyzer.parallel import analyze_parallel_mmap  # mmap-backed parallel variant
 
+
+def _load_dotenv(path: str) -> None:
+    """
+    Minimal .env loader: reads KEY=VALUE lines into os.environ, skipping
+    blank lines and '#' comments. Existing environment variables are NOT
+    overwritten, so `PORT=5002 python app.py` can still override the file.
+
+    We hand-roll this instead of depending on python-dotenv so the backend
+    has no extra install step / dependency just to read one number.
+    """
+    if not os.path.exists(path):
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            os.environ.setdefault(key.strip(), value.strip())
+
+
+# ---------------------------------------------------------------------------
+# Load PORT from the project-root .env file (one level above backend/), so
+# the port number lives in exactly one place and the frontend (vite.config.js
+# / api.js) can read the same file instead of each side hardcoding its own
+# copy of the number.
+# ---------------------------------------------------------------------------
+_load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env"))
+PORT = int(os.environ.get("PORT", 5000))
+
 # ---------------------------------------------------------------------------
 # Flask application setup
 # ---------------------------------------------------------------------------
@@ -454,5 +484,5 @@ if __name__ == "__main__":
     # would otherwise duplicate the worker pool; we already get fast restarts
     # are not critical for this project's local dev workflow.
     #
-    # port=5000 is the Flask default.  Change if it conflicts with another service.
-    app.run(debug=True, port=5000, use_reloader=False)
+    # PORT is read from the project-root .env file — change it there, not here.
+    app.run(debug=True, port=PORT, use_reloader=False)

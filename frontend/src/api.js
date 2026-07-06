@@ -1,4 +1,8 @@
-const BASE_URL = 'http://localhost:5000';
+// PORT comes from the project-root .env file (see vite.config.js's envDir /
+// envPrefix) so the frontend and backend always agree on the port without
+// either side hardcoding it.
+const PORT = import.meta.env.PORT || 5000;
+const BASE_URL = `http://localhost:${PORT}`;
 
 /**
  * POST /analyze
@@ -41,7 +45,7 @@ export async function analyzeFile(file, threads = 4) {
     return await res.json();
   } catch (err) {
     if (err instanceof TypeError && err.message.includes('fetch')) {
-      throw new Error('Cannot reach the Flask API — is the backend running on port 5000?');
+      throw new Error(`Cannot reach the Flask API — is the backend running on port ${PORT}?`);
     }
     throw new Error(err.message || 'Analysis request failed');
   }
@@ -83,7 +87,7 @@ export async function benchmarkFile(file) {
     return await res.json();
   } catch (err) {
     if (err instanceof TypeError && err.message.includes('fetch')) {
-      throw new Error('Cannot reach the Flask API — is the backend running on port 5000?');
+      throw new Error(`Cannot reach the Flask API — is the backend running on port ${PORT}?`);
     }
     throw new Error(err.message || 'Benchmark request failed');
   }

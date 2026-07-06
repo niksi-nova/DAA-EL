@@ -78,64 +78,61 @@ web server.
 
 ---
 
-## 3. The algorithms, explained
+## 3. The algorithms, explained (with analogies)
+
+To make it easy to explain to professors or peers, here is a detailed breakdown of each algorithm used in the pipeline.
 
 ### 3.1 Chunking (the "SPLIT" step) — `chunker.py`
-Naively splitting a file into N equal byte ranges can cut a line in half
-(`...[ERROR` | `OR] message...`), causing that line to be silently dropped
-by both halves — an undercounting bug. `get_chunks()` fixes this: it
-computes N candidate split points, then for each one seeks forward to the
-next `\n` and uses that as the real boundary. This guarantees every chunk
-starts and ends on a complete line.
-
-- Time: O(T) — T seeks, each followed by at most one short forward scan.
-- Space: O(T) — just the T `(start, end)` tuples.
+**The Goal:** Divide a massive log file into $N$ roughly equal pieces so multiple workers can process them simultaneously.
+**The Problem:** If we just slice the file by pure byte counts (e.g., exactly every 1MB), we might slice a line right in half. A line like `[ERROR] Connection timeout` might get cut into `[ER` and `ROR] Connection timeout`. Both workers would fail to match the regex, leading to an undercounting bug.
+**The Algorithm:**
+1. Calculate candidate byte boundaries: `file_size / N`.
+2. For each boundary (except the start and end of the file), open the file and seek to that exact byte.
+3. Read forward byte-by-byte until we hit the first newline character (`\n`).
+4. Lock in that newline position as the *real* boundary. 
+**Analogy:** Imagine tearing a book into equal chapters for friends to read. Instead of ripping pages exactly in half blindly, you find the closest end-of-paragraph to tear along, ensuring no one gets half a sentence.
+- **Time Complexity:** $O(T)$ — $T$ fast forward-seeks.
+- **Space Complexity:** $O(T)$ — Storing just the $T$ byte-range tuples.
 
 ### 3.2 Sequential baseline — `sequential.py`
-A single pass over the file, line by line, applying a pre-compiled regex
-(`\[(INFO|WARNING|ERROR|DEBUG|CRITICAL)[^\]]*\]`) to each line.
-- Time: O(N) where N = number of lines.
-- Space: O(1) — only five integer counters, regardless of file size.
+**The Goal:** Count the log levels using a single thread. This serves as our "control" in the experiment to prove that our parallel counts are correct and to act as a baseline for speedup.
+**The Algorithm:**
+1. Open the file normally.
+2. Read line by line from top to bottom.
+3. Apply a pre-compiled Regular Expression (`\[(INFO|WARNING|ERROR|DEBUG|CRITICAL)[^\]]*\]`) to check if the line contains a log level.
+4. Increment the corresponding integer counter.
+**Analogy:** One person reading a massive stack of papers top-to-bottom, keeping a tally on a piece of paper.
+- **Time Complexity:** $O(N)$ where $N$ is the total number of lines.
+- **Space Complexity:** $O(1)$ — Only five integer counters are held in memory regardless of how huge the file is.
 
 ### 3.3 Parallel (process pool) — `parallel.py`
-This is the MAP+REDUCE step:
-- **MAP**: each chunk is handed to a worker that opens its own file handle,
-  seeks to its byte range, reads it, decodes it, and counts log levels into a
-  *local* dict.
-- **REDUCE**: the main process sums the N partial dicts into one final dict.
+**The Goal:** Distribute the counting workload across multiple CPU cores to finish faster.
+**The Algorithm (MAP + REDUCE):**
+- **MAP:** The chunker gives each worker process a specific byte range (e.g., bytes 1000 to 4500). The worker opens the file, seeks to byte 1000, reads until 4500, and counts the log levels into its own *local* dictionary.
+- **REDUCE:** Once all workers finish, the main process gathers all the local dictionaries and sums them together (`total_errors = worker1_errors + worker2_errors...`).
 
-**Why `ProcessPoolExecutor`, not `ThreadPoolExecutor`?** This is the most
-important algorithmic decision in the project, and the project's original
-version got it wrong. Decoding bytes and running a regex over text is
-**CPU-bound** Python bytecode. CPython's Global Interpreter Lock (GIL) only
-allows one thread to execute Python bytecode at a time — so threads do *not*
-get you real concurrency on CPU-bound work; they just take turns. A process
-pool sidesteps the GIL entirely: each worker is a separate OS process with
-its own interpreter and its own GIL, so the regex/decode work genuinely runs
-on multiple cores at once. You can see this directly in our own benchmark
-data (§5) — `large.log` (500K lines) gets a real 2.4x speedup at 4 processes,
-something a thread pool could never deliver on this workload.
-
-- Time: O(N/T) parallel phase + O(T) reduce + O(T) process-spawn overhead.
-- Space: O(N/T) per worker (one chunk's worth of bytes).
+**Crucial Design Decision: Processes vs Threads.** 
+In Python, the Global Interpreter Lock (GIL) prevents multiple *threads* from executing Python bytecode simultaneously. If we used a `ThreadPoolExecutor`, threads would just take turns on a single CPU core, giving zero speedup. By using a `ProcessPoolExecutor`, we spawn entirely separate OS processes. Each has its own GIL, meaning they genuinely run on separate CPU cores at the exact same time.
+**Analogy:** Instead of one person reading 1000 pages, you hire 4 independent people. You give them 250 pages each. They read them in separate rooms simultaneously and hand you 4 sticky notes with their final tallies. You just add the 4 sticky notes together.
+- **Time Complexity:** $O(N/T)$ parallel phase + $O(T)$ reduce step + Process creation overhead.
+- **Space Complexity:** $O(N/T)$ per worker to hold its chunk of bytes.
 
 ### 3.4 mmap parallel — `parallel.py`
-Instead of `read()`-ing bytes (disk/page-cache → kernel buffer → user-space
-copy), each worker memory-maps the file and slices directly out of the
-mapped pages. Once the OS page cache is warm, this avoids a redundant copy
-and tends to be the fastest of the three methods on repeated/warm reads.
-Because `mmap.mmap` objects cannot be pickled across a process boundary,
-each worker process opens its **own** mapping of the same file — the OS page
-cache is still shared system-wide, so this costs no extra disk I/O.
+**The Goal:** Eliminate the overhead of copying data from the operating system's memory into Python's memory.
+**The Algorithm:**
+Normally, when you call `read()`, the OS reads from the disk into its own "Kernel buffer", and then copies that data *again* into your application's "User-space buffer" (Python variables). 
+Memory-mapping (`mmap`) bypasses this double-copy. It maps the file directly into the application's virtual address space. The worker can slice bytes directly out of the OS page cache as if it were a giant byte array in RAM.
+Because `mmap` objects cannot be easily shared across separate OS processes in Python, each worker opens its *own* mapping of the file.
+**Analogy:** Instead of photocopying pages from a master library book to give to your workers (`read()`), you give them a magical glass that lets them look directly at the master book's pages sitting in the library (`mmap`).
+- **Time/Space Complexity:** Asymptotically identical to standard parallel, but with a much smaller constant factor (faster execution) due to reduced I/O bottlenecks.
 
-### 3.5 Metrics — `metrics.py`
-- **Speedup** = `sequential_time / parallel_time`. >1 means parallel won.
-- **Efficiency** = `speedup / num_threads * 100%`. How much of each thread's
-  theoretical contribution was actually realized.
-- **Amdahl's Law**: `Speedup(T) = 1 / (S + (1-S)/T)` where S is the serial
-  (non-parallelizable) fraction of the work. We assume S=0.05 (5%) for this
-  I/O-adjacent workload and plot it as the theoretical ceiling against the
-  measured speedup.
+### 3.5 Metrics & Amdahl's Law — `metrics.py`
+**The Goal:** Quantify exactly how much faster we got, and compare it against the theoretical limits of computer science.
+- **Speedup:** `sequential_time / parallel_time`. If this is 2.0, the parallel version was twice as fast.
+- **Efficiency:** `(speedup / num_threads) * 100`. If 4 threads give a 2.0x speedup, efficiency is 50%. You rarely get 100% due to overhead.
+- **Amdahl's Law:** A formula `Speedup = 1 / (S + (1-S)/T)`. 
+  - $S$ is the strictly serial part of the task (e.g., chunking the file, booting up the processes, reducing the final counts).
+  - Even with infinite processors ($T \to \infty$), your speedup will never exceed `1 / S`. If 5% of the task is serial overhead, the absolute maximum speedup you can *ever* get is 20x, no matter how many cores you buy. This law is visually plotted in our frontend benchmark chart!
 
 ---
 
@@ -405,7 +402,41 @@ weren't a local demo tool.
 
 ---
 
-## 8. Running everything from scratch
+## 8. Future Improvements
+
+While this project successfully demonstrates the core concepts of parallel processing and algorithm design, there are several avenues for future enhancement:
+
+1.  **Distributed Processing (MapReduce Cluster):** Moving from a single-machine multi-process architecture to a multi-machine distributed architecture (using tools like Apache Hadoop, Apache Spark, or a custom distributed task queue like Celery with RabbitMQ). This would allow scaling beyond the core count of a single machine.
+2.  **Streaming Data Support:** Currently, the system analyzes static, pre-existing log files. An improvement would be to support real-time log ingestion (e.g., tailing a live log file or receiving logs over a network socket) and maintaining running counts using sliding window algorithms.
+3.  **Advanced Regex & Parsing:** Expanding the parsing capabilities beyond simple regex matching of log levels. This could include parsing timestamps to identify temporal anomalies (e.g., sudden spikes in error rates) or extracting specific IP addresses and request paths for deeper analytics.
+4.  **Persistent Caching & Indexing:** Implementing an inverted index on the log files to allow for rapid free-text searching alongside the level aggregation, potentially using tools like Elasticsearch or creating a simplified custom indexer.
+5.  **Dynamic Work Stealing:** The current chunking strategy divides the file evenly upfront. If some chunks have significantly longer lines or more complex data, worker imbalance can occur. Implementing a dynamic "work stealing" queue where faster workers can pick up remaining chunks would improve CPU utilization on uneven data.
+
+---
+
+## 9. Configuring the port (single `.env` file)
+
+The backend port lives in **one place**: the `.env` file at the project root
+(next to this README, one level above both `backend/` and `frontend/`):
+
+```
+PORT=5002
+```
+
+To change it, edit that one line — nothing else needs touching:
+- `backend/app.py` reads it directly (a tiny built-in parser, no extra
+  dependency) and binds Flask to it.
+- `frontend/vite.config.js` points Vite's env loader (`envDir: '../'`) at the
+  same root `.env` and whitelists the bare `PORT` key via `envPrefix`, so
+  `frontend/src/api.js` can read `import.meta.env.PORT` and build the right
+  `http://localhost:<PORT>` base URL automatically.
+
+Both sides fall back to `5000` if `.env` is missing, so the app still runs
+without it — but keeping the file in sync means you only ever edit one number.
+
+---
+
+## 10. Running everything from scratch
 
 ```bash
 # Backend
@@ -414,12 +445,12 @@ python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 python log_generator.py        # one-time: create sample log files
 python test_engine.py          # one-time: verify correctness before starting the server
-python app.py                  # starts Flask on http://127.0.0.1:5000
+python app.py                  # starts Flask on http://127.0.0.1:<PORT from .env>
 
 # Frontend (separate terminal)
 cd frontend
 npm install
-npm run dev                    # starts Vite dev server, proxies to the Flask API
+npm run dev                    # starts Vite dev server, reads the same PORT from ../.env
 ```
 
 `results.db` and `uploads/*.log` are not committed to git (see `.gitignore`) —
