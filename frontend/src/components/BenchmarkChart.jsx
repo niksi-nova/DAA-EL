@@ -17,19 +17,18 @@ function SectionLabel({ text }) {
 function SpeedupTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
-    <div style={{
-      background:   '#292524',
-      border:       '1px solid #44403C',
-      borderRadius: '4px',
-      padding:      '8px 12px',
+    <div className="glass-card" style={{
+      padding:      '12px 16px',
       fontFamily:   'JetBrains Mono, monospace',
-      fontSize:     '12px',
+      fontSize:     '13px',
+      border:       '1px solid var(--border)',
     }}>
-      <div style={{ color: '#A8A29E', marginBottom: '6px' }}>{label} threads</div>
+      <div style={{ color: 'var(--text-muted)', marginBottom: '6px' }}>{label} threads</div>
       {payload.map((entry) => (
         <div key={entry.name} style={{
-          color: entry.name === 'actual_speedup' ? '#F59E0B' : '#78716C',
+          color: entry.name === 'actual_speedup' ? 'var(--accent-dim)' : 'var(--text-muted)',
           marginBottom: '2px',
+          fontWeight: entry.name === 'actual_speedup' ? 600 : 400,
         }}>
           {entry.name === 'actual_speedup' ? 'actual' : 'amdahl'}: {Number(entry.value).toFixed(3)}×
         </div>
@@ -63,8 +62,8 @@ export default function BenchmarkChart({ result }) {
 
       {/* File info strip */}
       <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: '12px', fontFamily: 'JetBrains Mono, monospace', color: '#78716C' }}>{filename}</span>
-        <span style={{ fontSize: '12px', fontFamily: 'JetBrains Mono, monospace', color: '#44403C' }}>{file_size_kb?.toLocaleString()} KB</span>
+        <span style={{ fontSize: '13px', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-primary)', fontWeight: 500 }}>{filename}</span>
+        <span style={{ fontSize: '12px', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-muted)' }}>{file_size_kb?.toLocaleString()} KB</span>
       </div>
 
       {/* ── Section: thread scaling analysis ────────────────────────────── */}
@@ -99,27 +98,24 @@ export default function BenchmarkChart({ result }) {
         </div>
 
         {/* Speedup line chart */}
-        <div style={{
-          background:   '#292524',
-          border:       '1px solid #44403C',
-          borderRadius: '6px',
-          padding:      '16px 16px 8px',
+        <div className="glass-card" style={{
+          padding:      '20px 20px 12px',
         }}>
           <ResponsiveContainer width="100%" height={280}>
             <LineChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 20 }}>
               {/* Only axis lines, no grid */}
               <XAxis
                 dataKey="threads"
-                axisLine={{ stroke: '#44403C' }}
+                axisLine={{ stroke: 'var(--border-subtle)' }}
                 tickLine={false}
-                tick={{ fill: '#78716C', fontFamily: 'JetBrains Mono', fontSize: 11 }}
-                label={{ value: 'threads', position: 'insideBottom', offset: -12, fill: '#78716C', fontSize: 11, fontFamily: 'JetBrains Mono' }}
+                tick={{ fill: 'var(--text-muted)', fontFamily: 'JetBrains Mono', fontSize: 11 }}
+                label={{ value: 'threads', position: 'insideBottom', offset: -12, fill: 'var(--text-muted)', fontSize: 11, fontFamily: 'JetBrains Mono' }}
               />
               <YAxis
-                axisLine={{ stroke: '#44403C' }}
+                axisLine={{ stroke: 'var(--border-subtle)' }}
                 tickLine={false}
-                tick={{ fill: '#78716C', fontFamily: 'JetBrains Mono', fontSize: 11 }}
-                label={{ value: 'speedup ×', angle: -90, position: 'insideLeft', offset: 10, fill: '#78716C', fontSize: 11, fontFamily: 'JetBrains Mono' }}
+                tick={{ fill: 'var(--text-muted)', fontFamily: 'JetBrains Mono', fontSize: 11 }}
+                label={{ value: 'speedup ×', angle: -90, position: 'insideLeft', offset: 10, fill: 'var(--text-muted)', fontSize: 11, fontFamily: 'JetBrains Mono' }}
                 width={55}
               />
               <Tooltip content={<SpeedupTooltip />} />
@@ -128,19 +124,19 @@ export default function BenchmarkChart({ result }) {
               <Line
                 type="monotone"
                 dataKey="actual_speedup"
-                stroke="#F59E0B"
-                strokeWidth={2}
-                dot={{ fill: '#F59E0B', r: 4, strokeWidth: 0 }}
-                activeDot={{ r: 5, fill: '#F59E0B' }}
+                stroke="var(--accent)"
+                strokeWidth={3}
+                dot={{ fill: 'var(--accent)', r: 4, strokeWidth: 0 }}
+                activeDot={{ r: 6, fill: 'var(--accent-dim)' }}
               />
 
               {/* Amdahl theoretical — stone dashed */}
               <Line
                 type="monotone"
                 dataKey="theoretical_speedup"
-                stroke="#44403C"
-                strokeWidth={1.5}
-                strokeDasharray="4 4"
+                stroke="var(--text-dim)"
+                strokeWidth={2}
+                strokeDasharray="6 6"
                 dot={false}
                 activeDot={false}
               />
@@ -150,23 +146,23 @@ export default function BenchmarkChart({ result }) {
           {/* Chart legend */}
           <div style={{ display: 'flex', gap: '20px', justifyContent: 'center', marginBottom: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <div style={{ width: '14px', height: '2px', background: '#F59E0B' }} />
-              <span style={{ fontSize: '11px', fontFamily: 'Inter, sans-serif', color: '#78716C' }}>actual</span>
+              <div style={{ width: '16px', height: '3px', background: 'var(--accent)' }} />
+              <span style={{ fontSize: '12px', fontFamily: 'Inter, sans-serif', color: 'var(--text-muted)' }}>actual</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <div style={{
-                width: '14px', height: '2px',
-                background: 'repeating-linear-gradient(90deg, #44403C 0 4px, transparent 4px 8px)',
+                width: '16px', height: '2px',
+                background: 'repeating-linear-gradient(90deg, var(--text-dim) 0 4px, transparent 4px 8px)',
               }} />
-              <span style={{ fontSize: '11px', fontFamily: 'Inter, sans-serif', color: '#78716C' }}>amdahl (s=0.05)</span>
+              <span style={{ fontSize: '12px', fontFamily: 'Inter, sans-serif', color: 'var(--text-muted)' }}>amdahl (s=0.05)</span>
             </div>
           </div>
 
           {/* Annotation */}
           <div style={{
-            fontSize:   '11px',
+            fontSize:   '12px',
             fontFamily: 'Inter, sans-serif',
-            color:      '#78716C',
+            color:      'var(--text-muted)',
             textAlign:  'center',
             fontStyle:  'italic',
           }}>
@@ -178,13 +174,10 @@ export default function BenchmarkChart({ result }) {
       {/* ── Section: detailed results table ─────────────────────────────── */}
       <div>
         <SectionLabel text="detailed results" />
-        <div style={{
-          background:   '#111110',
-          border:       '1px solid #44403C',
-          borderRadius: '6px',
-          padding:      '12px 16px',
+        <div className="glass-card" style={{
+          padding:      '16px 20px',
           fontFamily:   'JetBrains Mono, monospace',
-          fontSize:     '12px',
+          fontSize:     '13px',
           overflowX:    'auto',
         }}>
           {/* Header */}
@@ -192,10 +185,10 @@ export default function BenchmarkChart({ result }) {
             display:             'grid',
             gridTemplateColumns: '80px 100px 120px 120px 100px',
             gap:                 '8px',
-            color:               '#78716C',
+            color:               'var(--text-muted)',
             paddingBottom:       '8px',
-            borderBottom:        '1px solid #2C2A28',
-            marginBottom:        '4px',
+            borderBottom:        '1px solid var(--border-subtle)',
+            marginBottom:        '8px',
             minWidth:            '500px',
           }}>
             <span>threads</span>
@@ -215,17 +208,18 @@ export default function BenchmarkChart({ result }) {
                   display:             'grid',
                   gridTemplateColumns: '80px 100px 120px 120px 100px',
                   gap:                 '8px',
-                  color:               '#A8A29E',
-                  paddingTop:          '5px',
-                  paddingBottom:       '5px',
+                  color:               'var(--text-primary)',
+                  paddingTop:          '8px',
+                  paddingBottom:       '8px',
                   paddingLeft:         isBest ? '6px' : '8px',
-                  borderLeft:          isBest ? '2px solid #F59E0B' : '2px solid transparent',
+                  borderLeft:          isBest ? '2px solid var(--accent)' : '2px solid transparent',
+                  background:          isBest ? 'rgba(255, 209, 220, 0.2)' : 'transparent',
                   minWidth:            '500px',
                 }}
               >
                 <span>{r.threads}</span>
                 <span style={{ textAlign: 'right' }}>{r.time_ms.toFixed(2)}</span>
-                <span style={{ textAlign: 'right', color: '#F59E0B' }}>{r.actual_speedup.toFixed(3)}</span>
+                <span style={{ textAlign: 'right', color: 'var(--accent-dim)', fontWeight: 600 }}>{r.actual_speedup.toFixed(3)}</span>
                 <span style={{ textAlign: 'right' }}>{r.theoretical_speedup.toFixed(3)}</span>
                 <span style={{ textAlign: 'right' }}>{r.efficiency_pct?.toFixed(1)}%</span>
               </div>
@@ -233,6 +227,27 @@ export default function BenchmarkChart({ result }) {
           })}
         </div>
       </div>
+
+      {/* ── Section: File Preview ─────────────────────────────────────── */}
+      {result.file_preview && result.file_preview.length > 0 && (
+        <div>
+          <SectionLabel text="file preview (first 10 lines)" />
+          <div className="glass-card" style={{
+            padding:      '16px 20px',
+            fontFamily:   'JetBrains Mono, monospace',
+            fontSize:     '12px',
+            color:        'var(--text-muted)',
+            overflowX:    'auto',
+            whiteSpace:   'pre',
+            lineHeight:   '1.6',
+            background:   'var(--bg-base)'
+          }}>
+            {result.file_preview.map((line, idx) => (
+              <div key={idx}>{line}</div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

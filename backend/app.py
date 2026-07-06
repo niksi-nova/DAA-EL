@@ -179,6 +179,21 @@ def _save_upload(file_storage, job_id: str) -> str:
     return save_path
 
 
+def _get_file_preview(filepath: str, max_lines: int = 10) -> list[str]:
+    """Return the first `max_lines` of the file for preview."""
+    preview = []
+    try:
+        with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+            for _ in range(max_lines):
+                line = f.readline()
+                if not line:
+                    break
+                preview.append(line.rstrip("\n"))
+    except Exception:
+        pass
+    return preview
+
+
 # =============================================================================
 # ROUTE: POST /analyze
 # =============================================================================
@@ -213,36 +228,51 @@ def analyze() -> Response:
       400 Bad Request  — missing file, no filename, disallowed extension
       500 Internal     — unexpected error during analysis
     """
-    # ── Validate request ────────────────────────────────────────────────────
-    if "file" not in request.files:
-        return jsonify({"error": "No file part in request."}), 400
-
-    file = request.files["file"]
-    if file.filename == "":
-        return jsonify({"error": "No file selected."}), 400
-
-    if not _allowed_file(file.filename):
-        return jsonify({
-            "error": f"File type not allowed. Accepted: {ALLOWED_EXTENSIONS}"
-        }), 400
+    # ── Handle file upload OR synthetic generation ──────────────────────────
+    is_synthetic = "synthetic" in request.form
+    job_id = str(uuid.uuid4())
+    
+    if is_synthetic:
+        synthetic_size = request.form["synthetic"]
+        if synthetic_size == "custom":
+            try:
+                num_lines = int(request.form.get("custom_lines", 10000))
+                num_lines = max(1, min(5_000_000, num_lines)) # cap at 5M to prevent OOM/timeouts
+            except ValueError:
+                num_lines = 10000
+        else:
+            num_lines = {"small": 10000, "medium": 100000, "large": 500000}.get(synthetic_size, 10000)
+            
+        original_filename = f"synthetic_{synthetic_size}.log"
+        filepath = os.path.join(UPLOAD_FOLDER, f"{job_id}_{original_filename}")
+        
+        # generate_log_file is not imported at module level to avoid circular deps
+        import log_generator
+        log_generator.generate_log_file(filepath, num_lines)
+    else:
+        if "file" not in request.files:
+            return jsonify({"error": "No file part in request."}), 400
+        file = request.files["file"]
+        if file.filename == "":
+            return jsonify({"error": "No file selected."}), 400
+        if not _allowed_file(file.filename):
+            return jsonify({
+                "error": f"File type not allowed. Accepted: {ALLOWED_EXTENSIONS}"
+            }), 400
+            
+        filepath = _save_upload(file, job_id)
+        original_filename = secure_filename(file.filename)
 
     # ── Parse thread count ──────────────────────────────────────────────────
     try:
         num_threads = int(request.form.get("threads", 4))
     except ValueError:
         num_threads = 4
-    # Clamp to a sane range: minimum 1, maximum 32.
     num_threads = max(1, min(32, num_threads))
-
-    # ── Generate a job ID and save the file ─────────────────────────────────
-    # uuid4() generates a random 128-bit identifier.  The probability of a
-    # collision is astronomically small (2^-61 for 1 billion jobs).
-    job_id = str(uuid.uuid4())
-    filepath = _save_upload(file, job_id)
-    original_filename = secure_filename(file.filename)
 
     try:
         file_size_kb = round(os.path.getsize(filepath) / 1024, 2)
+        file_preview = _get_file_preview(filepath)
 
         # ── SPLIT ──────────────────────────────────────────────────────────
         # Divide the file into num_threads byte-range chunks aligned to newlines.
@@ -290,6 +320,7 @@ def analyze() -> Response:
             # mmap wall-clock time exposed directly so the frontend can show
             # all three bars (sequential / parallel / mmap) in one response.
             "mmap_time_ms":  round(mmap_time * 1000, 2),
+            "file_preview":  file_preview,
         }
 
         # Persist the result for later retrieval via GET /results/<job_id>,
@@ -347,24 +378,42 @@ def benchmark() -> Response:
         ]
       }
     """
-    if "file" not in request.files:
-        return jsonify({"error": "No file part in request."}), 400
-
-    file = request.files["file"]
-    if file.filename == "":
-        return jsonify({"error": "No file selected."}), 400
-
-    if not _allowed_file(file.filename):
-        return jsonify({
-            "error": f"File type not allowed. Accepted: {ALLOWED_EXTENSIONS}"
-        }), 400
-
+    is_synthetic = "synthetic" in request.form
     job_id = str(uuid.uuid4())
-    filepath = _save_upload(file, job_id)
-    original_filename = secure_filename(file.filename)
+    
+    if is_synthetic:
+        synthetic_size = request.form["synthetic"]
+        if synthetic_size == "custom":
+            try:
+                num_lines = int(request.form.get("custom_lines", 10000))
+                num_lines = max(1, min(5_000_000, num_lines))
+            except ValueError:
+                num_lines = 10000
+        else:
+            num_lines = {"small": 10000, "medium": 100000, "large": 500000}.get(synthetic_size, 10000)
+            
+        original_filename = f"synthetic_{synthetic_size}.log"
+        filepath = os.path.join(UPLOAD_FOLDER, f"{job_id}_{original_filename}")
+        
+        import log_generator
+        log_generator.generate_log_file(filepath, num_lines)
+    else:
+        if "file" not in request.files:
+            return jsonify({"error": "No file part in request."}), 400
+        file = request.files["file"]
+        if file.filename == "":
+            return jsonify({"error": "No file selected."}), 400
+        if not _allowed_file(file.filename):
+            return jsonify({
+                "error": f"File type not allowed. Accepted: {ALLOWED_EXTENSIONS}"
+            }), 400
+
+        filepath = _save_upload(file, job_id)
+        original_filename = secure_filename(file.filename)
 
     try:
         file_size_kb = round(os.path.getsize(filepath) / 1024, 2)
+        file_preview = _get_file_preview(filepath)
 
         # Warm the OS page cache before the very first timed run (see
         # _warm_page_cache docstring) so the sequential baseline isn't
@@ -415,6 +464,7 @@ def benchmark() -> Response:
             "file_size_kb":  file_size_kb,
             "sequential_ms": seq_ms,
             "results":       results,
+            "file_preview":  file_preview,
         }
 
         return jsonify(response), 200

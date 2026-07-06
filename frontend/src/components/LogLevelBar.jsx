@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 
 const LEVEL_COLORS = {
-  INFO:     '#A8A29E',
-  WARNING:  '#F59E0B',
-  DEBUG:    '#78716C',
-  ERROR:    '#EF4444',
-  CRITICAL: '#DC2626',
+  INFO:     'var(--log-info)',
+  WARNING:  'var(--log-warning)',
+  DEBUG:    'var(--log-debug)',
+  ERROR:    'var(--log-error)',
+  CRITICAL: 'var(--log-critical)',
 };
 
 const LEVELS_ORDER = ['INFO', 'WARNING', 'ERROR', 'DEBUG', 'CRITICAL'];
@@ -35,13 +35,12 @@ export default function LogLevelBar({ counts, total }) {
         return (
           <div key={level} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             {/* Level name — fixed 70px */}
-            <span style={{
-              fontSize:      '11px',
-              fontFamily:    'Inter, sans-serif',
-              fontWeight:    500,
+            <span className="outfit" style={{
+              fontSize:      '12px',
+              fontWeight:    600,
               textTransform: 'uppercase',
               letterSpacing: '0.06em',
-              color:         '#78716C',
+              color:         'var(--text-muted)',
               width:         '70px',
               flexShrink:    0,
             }}>
@@ -51,9 +50,9 @@ export default function LogLevelBar({ counts, total }) {
             {/* Track */}
             <div style={{
               flex:         1,
-              height:       '3px',
-              background:   '#2C2A28',
-              borderRadius: '2px',
+              height:       '6px',
+              background:   'var(--border-subtle)',
+              borderRadius: '4px',
               overflow:     'hidden',
             }}>
               {/* Fill — animated width */}
@@ -61,16 +60,16 @@ export default function LogLevelBar({ counts, total }) {
                 height:          '100%',
                 width:           animated ? `${pct}%` : '0%',
                 background:      color,
-                borderRadius:    '2px',
+                borderRadius:    '4px',
                 transition:      'width 0.6s ease',
               }} />
             </div>
 
             {/* Count — fixed 60px right-aligned */}
             <span style={{
-              fontSize:   '12px',
+              fontSize:   '13px',
               fontFamily: 'JetBrains Mono, monospace',
-              color:      '#FAFAF9',
+              color:      'var(--text-primary)',
               width:      '60px',
               textAlign:  'right',
               flexShrink: 0,
@@ -86,15 +85,15 @@ export default function LogLevelBar({ counts, total }) {
         display:       'flex',
         justifyContent:'flex-end',
         marginTop:     '4px',
-        paddingTop:    '8px',
-        borderTop:     '1px solid #2C2A28',
+        paddingTop:    '12px',
+        borderTop:     '1px solid var(--border-subtle)',
       }}>
         <span style={{
-          fontSize:   '11px',
+          fontSize:   '12px',
           fontFamily: 'JetBrains Mono, monospace',
-          color:      '#78716C',
+          color:      'var(--text-muted)',
         }}>
-          total&nbsp;&nbsp;{total?.toLocaleString() ?? 0}&nbsp;lines
+          total&nbsp;&nbsp;<span style={{color: 'var(--text-primary)', fontWeight: 600}}>{total?.toLocaleString() ?? 0}</span>&nbsp;lines
         </span>
       </div>
     </div>

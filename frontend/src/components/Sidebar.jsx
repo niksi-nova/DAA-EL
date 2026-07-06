@@ -31,45 +31,46 @@ export default function Sidebar({ activePage, onNavigate }) {
 
   return (
     <aside
-      className="sidebar-fixed"
+      className="sidebar-fixed glass-card"
       style={{
         width:          '220px',
         minWidth:       '220px',
         height:         '100vh',
-        background:     '#111110',
-        borderRight:    '1px solid #2C2A28',
         display:        'flex',
         flexDirection:  'column',
         position:       'sticky',
         top:            0,
         flexShrink:     0,
+        borderRadius:   '0 16px 16px 0', /* Only round right side for sidebar */
+        borderLeft:     'none',
+        borderTop:      'none',
+        borderBottom:   'none',
       }}
     >
       {/* Logo / app name */}
-      <div style={{ padding: '20px 16px 0' }}>
+      <div style={{ padding: '24px 16px 0' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
-          {/* Amber square logo mark */}
+          {/* Pastel square logo mark */}
           <div style={{
             width:        '8px',
             height:       '8px',
-            background:   '#F59E0B',
+            background:   'var(--accent)',
             flexShrink:   0,
-            borderRadius: '1px',
+            borderRadius: '2px',
           }} />
-          <span style={{
-            fontFamily:  'Inter, sans-serif',
-            fontWeight:  500,
-            fontSize:    '15px',
-            color:       '#FAFAF9',
+          <span className="outfit" style={{
+            fontWeight:  600,
+            fontSize:    '17px',
+            color:       'var(--text-primary)',
             letterSpacing: '-0.01em',
           }}>
             logscope
           </span>
         </div>
         <div style={{
-          fontSize:   '11px',
+          fontSize:   '12px',
           fontFamily: 'Inter, sans-serif',
-          color:      '#78716C',
+          color:      'var(--text-muted)',
           paddingLeft:'16px',
         }}>
           parallel analyzer
@@ -77,43 +78,41 @@ export default function Sidebar({ activePage, onNavigate }) {
       </div>
 
       {/* Divider */}
-      <div style={{ height: '1px', background: '#2C2A28', margin: '16px 0' }} />
+      <div style={{ height: '1px', background: 'var(--border-subtle)', margin: '16px 0' }} />
 
       {/* Nav items */}
-      <nav style={{ flex: 1 }}>
+      <nav style={{ flex: 1, padding: '0 8px' }}>
         {NAV_ITEMS.map(({ id, label }) => {
           const isActive = activePage === id;
           return (
             <button
               key={id}
               onClick={() => onNavigate(id)}
+              className="outfit"
               style={{
                 display:         'block',
                 width:           '100%',
-                padding:         '8px 16px',
+                padding:         '10px 16px',
                 textAlign:       'left',
-                fontSize:        '13px',
-                fontFamily:      'Inter, sans-serif',
-                fontWeight:      isActive ? 500 : 400,
-                color:           isActive ? '#FAFAF9' : '#78716C',
-                background:      isActive ? '#292524' : 'transparent',
-                borderLeft:      isActive ? '2px solid #F59E0B' : '2px solid transparent',
-                borderRight:     'none',
-                borderTop:       'none',
-                borderBottom:    'none',
-                borderRadius:    0,
+                fontSize:        '14px',
+                fontWeight:      isActive ? 600 : 500,
+                color:           isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+                background:      isActive ? 'var(--bg-hover)' : 'transparent',
+                border:          'none',
+                borderRadius:    '8px',
                 cursor:          'pointer',
-                transition:      'color 0.15s, background 0.15s',
+                transition:      'all 0.2s ease',
+                marginBottom:    '4px',
               }}
               onMouseEnter={e => {
                 if (!isActive) {
-                  e.currentTarget.style.color = '#A8A29E';
-                  e.currentTarget.style.background = '#1C1917';
+                  e.currentTarget.style.color = 'var(--text-primary)';
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.3)';
                 }
               }}
               onMouseLeave={e => {
                 if (!isActive) {
-                  e.currentTarget.style.color = '#78716C';
+                  e.currentTarget.style.color = 'var(--text-muted)';
                   e.currentTarget.style.background = 'transparent';
                 }
               }}
@@ -126,8 +125,8 @@ export default function Sidebar({ activePage, onNavigate }) {
 
       {/* API status indicator */}
       <div style={{
-        padding:     '12px 16px',
-        borderTop:   '1px solid #2C2A28',
+        padding:     '16px',
+        borderTop:   '1px solid var(--border-subtle)',
         display:     'flex',
         alignItems:  'center',
         gap:         '7px',
@@ -139,14 +138,14 @@ export default function Sidebar({ activePage, onNavigate }) {
           borderRadius: '50%',
           flexShrink:   0,
           background:
-            apiOnline === null ? '#78716C' :
-            apiOnline           ? '#4ADE80' :
-                                  '#EF4444',
+            apiOnline === null ? 'var(--text-dim)' :
+            apiOnline           ? 'var(--success)' :
+                                  'var(--danger)',
         }} />
         <span style={{
           fontSize:   '11px',
           fontFamily: 'JetBrains Mono, monospace',
-          color:      '#78716C',
+          color:      'var(--text-muted)',
         }}>
           api
         </span>
@@ -154,9 +153,9 @@ export default function Sidebar({ activePage, onNavigate }) {
           fontSize:   '11px',
           fontFamily: 'JetBrains Mono, monospace',
           color:
-            apiOnline === null ? '#78716C' :
-            apiOnline           ? '#4ADE80' :
-                                  '#EF4444',
+            apiOnline === null ? 'var(--text-dim)' :
+            apiOnline           ? 'var(--text-primary)' :
+                                  'var(--danger)',
         }}>
           {apiOnline === null ? 'checking' : apiOnline ? 'connected' : 'offline'}
         </span>

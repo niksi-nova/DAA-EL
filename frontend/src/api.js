@@ -26,10 +26,17 @@ const BASE_URL = `http://localhost:${PORT}`;
  *   mmap_time_ms: number
  * }>}
  */
-export async function analyzeFile(file, threads = 4) {
+export async function analyzeFile(file, threads = 4, synthetic = null, customLines = null) {
   try {
     const formData = new FormData();
-    formData.append('file', file);
+    if (synthetic) {
+      formData.append('synthetic', synthetic);
+      if (synthetic === 'custom' && customLines) {
+        formData.append('custom_lines', String(customLines));
+      }
+    } else if (file) {
+      formData.append('file', file);
+    }
     formData.append('threads', String(threads));
 
     const res = await fetch(`${BASE_URL}/analyze`, {
@@ -69,10 +76,17 @@ export async function analyzeFile(file, threads = 4) {
  *   }>
  * }>}
  */
-export async function benchmarkFile(file) {
+export async function benchmarkFile(file, synthetic = null, customLines = null) {
   try {
     const formData = new FormData();
-    formData.append('file', file);
+    if (synthetic) {
+      formData.append('synthetic', synthetic);
+      if (synthetic === 'custom' && customLines) {
+        formData.append('custom_lines', String(customLines));
+      }
+    } else if (file) {
+      formData.append('file', file);
+    }
 
     const res = await fetch(`${BASE_URL}/benchmark`, {
       method: 'POST',

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -7,21 +7,30 @@
 *, *::before, *::after { box-sizing: border-box; }
 
 :root {
-  --bg-base:       #1C1917;
-  --bg-surface:    #292524;
-  --bg-deep:       #111110;
-  --bg-hover:      #3C3836;
-  --border:        #44403C;
-  --border-subtle: #2C2A28;
-  --text-primary:  #FAFAF9;
-  --text-muted:    #A8A29E;
-  --text-dim:      #78716C;
-  --accent:        #F59E0B;
-  --accent-dim:    #92400E;
-  --danger:        #EF4444;
-  --danger-dim:    #450A0A;
-  --success:       #4ADE80;
-  --success-dim:   #052E16;
+  --bg-base:       #FDFBF7;
+  --bg-surface:    rgba(255, 255, 255, 0.4);
+  --bg-deep:       #F2EFE9;
+  --bg-hover:      rgba(255, 255, 255, 0.6);
+  --border:        rgba(255, 255, 255, 0.8);
+  --border-subtle: rgba(0, 0, 0, 0.05);
+  --text-primary:  #2D3748;
+  --text-muted:    #718096;
+  --text-dim:      #A0AEC0;
+  
+  /* Pastel Accents */
+  --accent:        #FFD1DC; /* Pastel Pink/Rose for accents */
+  --accent-dim:    #FFB7B2;
+  --danger:        #FFB7B2; /* Pastel Red */
+  --danger-dim:    #FF9AA2;
+  --success:       #B5EAD7; /* Pastel Green */
+  --success-dim:   #95D5B2;
+  
+  /* Log levels (adjusted for readability on light background) */
+  --log-info:      #4A90E2;
+  --log-warning:   #F5A623;
+  --log-error:     #E15554;
+  --log-debug:     #3BB273;
+  --log-critical:  #7768AE;
 }
 
 body {
@@ -34,13 +43,30 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* The root app div gets the grain texture */
+/* Beautiful Heading Font */
+h1, h2, h3, h4, h5, h6, .outfit {
+  font-family: 'Outfit', sans-serif;
+}
+
+/* The root app div gets a soft, premium mesh gradient background */
 #app {
   background-color: var(--bg-base);
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
-  background-repeat: repeat;
-  background-size: 200px 200px;
+  background-image: 
+    radial-gradient(at 0% 0%, hsla(353,100%,88%,0.4) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, hsla(210,100%,88%,0.4) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, hsla(138,100%,88%,0.3) 0px, transparent 50%),
+    radial-gradient(at 0% 100%, hsla(53,100%,88%,0.4) 0px, transparent 50%);
   min-height: 100vh;
+}
+
+/* Glassmorphism Utility */
+.glass-card {
+  background: var(--bg-surface);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.05);
+  border-radius: 16px;
 }
 
 .mono {
@@ -49,9 +75,9 @@ body {
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: var(--bg-base); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--bg-hover); }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2); }
 
 /* Section label divider */
 .section-label {
@@ -61,12 +87,12 @@ body {
   margin-bottom: 14px;
 }
 .section-label span {
-  font-size: 10px;
-  font-family: 'Inter', sans-serif;
-  font-weight: 500;
+  font-size: 16px;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: var(--text-dim);
+  color: var(--text-muted);
   white-space: nowrap;
 }
 .section-label::after {

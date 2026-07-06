@@ -23,11 +23,11 @@ export default function App() {
   const [error,           setError]           = useState(null);
 
   // ── Analyze handler ──────────────────────────────────────────────────────
-  const handleAnalyze = async (file, threads) => {
+  const handleAnalyze = async (file, threads, synthetic = null, customLines = null) => {
     setError(null);
     setIsLoading(true);
     try {
-      const result = await analyzeFile(file, threads);
+      const result = await analyzeFile(file, threads, synthetic, customLines);
       setAnalysisResult(result);
       setActivePage('results');      // auto-navigate on success
     } catch (err) {
@@ -38,11 +38,11 @@ export default function App() {
   };
 
   // ── Benchmark handler ────────────────────────────────────────────────────
-  const handleBenchmark = async (file) => {
+  const handleBenchmark = async (file, synthetic = null, customLines = null) => {
     setError(null);
     setIsLoading(true);
     try {
-      const result = await benchmarkFile(file);
+      const result = await benchmarkFile(file, synthetic, customLines);
       setBenchmarkResult(result);
       setActivePage('benchmark');    // auto-navigate on success
     } catch (err) {
@@ -97,32 +97,34 @@ export default function App() {
       }}>
         {/* Error bar */}
         {error && (
-          <div style={{
-            background:  '#450A0A',
-            borderBottom:'1px solid #EF4444',
+          <div className="glass-card" style={{
+            background:  'var(--danger-dim)',
+            borderBottom:'1px solid var(--danger)',
             padding:     '8px 16px',
             display:     'flex',
             alignItems:  'center',
             justifyContent:'space-between',
             gap:         '12px',
             flexShrink:  0,
+            margin:      '16px 32px 0 32px',
+            borderRadius:'8px',
           }}>
             <span style={{
               fontSize:   '12px',
               fontFamily: 'JetBrains Mono, monospace',
-              color:      '#EF4444',
+              color:      '#842029',
             }}>
               &gt; error: {error}
             </span>
             <button
               onClick={() => setError(null)}
               style={{
-                background:   'transparent',
-                border:       '1px solid #EF4444',
+                background:   'rgba(255, 255, 255, 0.5)',
+                border:       '1px solid rgba(132, 32, 41, 0.2)',
                 borderRadius: '4px',
-                color:        '#EF4444',
+                color:        '#842029',
                 fontSize:     '11px',
-                fontFamily:   'Inter, sans-serif',
+                fontFamily:   'Outfit, sans-serif',
                 cursor:       'pointer',
                 padding:      '2px 8px',
                 flexShrink:   0,
@@ -157,33 +159,56 @@ export default function App() {
 
 /** Page heading strip — changes per active page */
 function PageHeading({ activePage, isLoading }) {
+  if (activePage === 'analyze') {
+    return (
+      <div style={{ marginBottom: '40px', marginTop: '12px' }}>
+        <h1 className="outfit" style={{
+          fontSize:      '36px',
+          fontWeight:    700,
+          color:         'var(--text-primary)',
+          marginBottom:  '12px',
+          letterSpacing: '-0.02em',
+          lineHeight:    '1.2',
+        }}>
+          DAA Parallel Log Analyzer
+        </h1>
+        <p style={{
+          fontSize:   '15px',
+          fontFamily: 'Inter, sans-serif',
+          color:      'var(--text-muted)',
+          maxWidth:   '600px',
+          lineHeight: '1.5',
+        }}>
+          Upload a massive log file and watch the backend split it into chunks, distribute it across CPU cores, and merge the results using MapReduce-style parallelism.
+        </p>
+      </div>
+    );
+  }
+
   const titles = {
-    analyze:   'analyze',
     results:   'results',
     benchmark: 'benchmark',
   };
   const subs = {
-    analyze:   'upload a log file and run the parallel analysis engine',
     results:   'sequential · parallel · mmap comparison',
     benchmark: 'thread-count scaling — amdahl\'s law vs. measured performance',
   };
 
   return (
     <div style={{ marginBottom: '24px' }}>
-      <div style={{
-        fontSize:      '16px',
-        fontFamily:    'Inter, sans-serif',
-        fontWeight:    500,
-        color:         '#FAFAF9',
+      <div className="outfit" style={{
+        fontSize:      '24px',
+        fontWeight:    600,
+        color:         'var(--text-primary)',
         marginBottom:  '4px',
         letterSpacing: '-0.01em',
       }}>
         {titles[activePage] ?? 'analyze'}
         {isLoading && (
           <span style={{
-            fontSize:   '11px',
+            fontSize:   '12px',
             fontFamily: 'JetBrains Mono, monospace',
-            color:      '#F59E0B',
+            color:      'var(--text-muted)',
             marginLeft: '12px',
             fontWeight: 400,
           }}>
@@ -192,9 +217,9 @@ function PageHeading({ activePage, isLoading }) {
         )}
       </div>
       <div style={{
-        fontSize:   '12px',
+        fontSize:   '14px',
         fontFamily: 'Inter, sans-serif',
-        color:      '#78716C',
+        color:      'var(--text-muted)',
       }}>
         {subs[activePage] ?? ''}
       </div>
@@ -205,16 +230,17 @@ function PageHeading({ activePage, isLoading }) {
 /** Empty state placeholder */
 function EmptyState({ message }) {
   return (
-    <div style={{
+    <div className="glass-card" style={{
       display:        'flex',
       alignItems:     'center',
       justifyContent: 'center',
       minHeight:      '200px',
+      marginTop:      '24px',
     }}>
       <span style={{
         fontSize:   '13px',
         fontFamily: 'JetBrains Mono, monospace',
-        color:      '#78716C',
+        color:      'var(--text-muted)',
       }}>
         &gt; {message}
       </span>
@@ -235,19 +261,20 @@ function MobileNav({ activePage, onNavigate }) {
 
   return (
     <nav
-      className="mobile-nav"
+      className="mobile-nav glass-card"
       style={{
         display:        'none', // overridden by media query in index.css
         position:       'fixed',
         bottom:         0,
         left:           0,
         right:          0,
-        background:     '#111110',
-        borderTop:      '1px solid #2C2A28',
         zIndex:         100,
         justifyContent: 'space-around',
         alignItems:     'center',
         paddingBottom:  'env(safe-area-inset-bottom)',
+        borderRadius:   '16px 16px 0 0',
+        borderBottom:   'none',
+        margin:         '0 -1px', // Hide side borders slightly
       }}
     >
       {items.map(({ id, label }) => {
@@ -256,18 +283,18 @@ function MobileNav({ activePage, onNavigate }) {
           <button
             key={id}
             onClick={() => onNavigate(id)}
+            className="outfit"
             style={{
               flex:       1,
-              padding:    '12px 4px',
+              padding:    '16px 4px',
               background: 'transparent',
               border:     'none',
-              borderTop:  isActive ? '2px solid #F59E0B' : '2px solid transparent',
+              borderTop:  isActive ? '3px solid var(--text-primary)' : '3px solid transparent',
               cursor:     'pointer',
-              fontSize:   '11px',
-              fontFamily: 'Inter, sans-serif',
-              fontWeight: isActive ? 500 : 400,
-              color:      isActive ? '#FAFAF9' : '#78716C',
-              transition: 'color 0.15s',
+              fontSize:   '13px',
+              fontWeight: isActive ? 600 : 500,
+              color:      isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+              transition: 'all 0.2s',
             }}
           >
             {label}

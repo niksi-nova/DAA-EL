@@ -9,37 +9,33 @@
  */
 export default function MetricCard({ label, value, sub, variant = 'default' }) {
   const valueColor = {
-    default: '#FAFAF9',
-    accent:  '#F59E0B',
-    danger:  '#EF4444',
-    success: '#4ADE80',
-  }[variant] ?? '#FAFAF9';
+    default: 'var(--text-primary)',
+    accent:  'var(--accent)',
+    danger:  'var(--danger)',
+    success: 'var(--success)',
+  }[variant] ?? 'var(--text-primary)';
 
   return (
-    <div style={{
-      background:   '#292524',
-      border:       '1px solid #44403C',
-      borderRadius: '6px',
-      padding:      '16px',
+    <div className="glass-card" style={{
+      padding:      '20px',
     }}>
       {/* Label */}
-      <div style={{
-        fontSize:      '11px',
-        fontFamily:    'Inter, sans-serif',
-        fontWeight:    500,
+      <div className="outfit" style={{
+        fontSize:      '12px',
+        fontWeight:    600,
         textTransform: 'uppercase',
         letterSpacing: '0.08em',
-        color:         '#78716C',
-        marginBottom:  '6px',
+        color:         'var(--text-muted)',
+        marginBottom:  '8px',
       }}>
         {label}
       </div>
 
       {/* Value */}
       <div style={{
-        fontSize:    '22px',
+        fontSize:    '24px',
         fontFamily:  'JetBrains Mono, monospace',
-        fontWeight:  500,
+        fontWeight:  600,
         color:       valueColor,
         lineHeight:  1.2,
       }}>
@@ -49,10 +45,10 @@ export default function MetricCard({ label, value, sub, variant = 'default' }) {
       {/* Optional sub-label */}
       {sub && (
         <div style={{
-          fontSize:   '11px',
+          fontSize:   '12px',
           fontFamily: 'Inter, sans-serif',
-          color:      '#78716C',
-          marginTop:  '4px',
+          color:      'var(--text-dim)',
+          marginTop:  '6px',
         }}>
           {sub}
         </div>

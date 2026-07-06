@@ -8,11 +8,11 @@ import LogLevelBar from './LogLevelBar.jsx';
 const LEVELS = ['INFO', 'WARNING', 'ERROR', 'DEBUG', 'CRITICAL'];
 
 const LEVEL_TEXT_COLORS = {
-  INFO:     '#A8A29E',
-  WARNING:  '#F59E0B',
-  ERROR:    '#EF4444',
-  DEBUG:    '#A8A29E',
-  CRITICAL: '#EF4444',
+  INFO:     'var(--log-info)',
+  WARNING:  'var(--log-warning)',
+  ERROR:    'var(--log-error)',
+  DEBUG:    'var(--log-debug)',
+  CRITICAL: 'var(--log-critical)',
 };
 
 /** Section-label divider helper */
@@ -24,21 +24,18 @@ function SectionLabel({ text }) {
   );
 }
 
-/** Custom tooltip for the timing bar chart */
 function TimingTooltip({ active, payload }) {
   if (!active || !payload?.length) return null;
   const entry = payload[0];
   return (
-    <div style={{
-      background:   '#292524',
-      border:       '1px solid #44403C',
-      borderRadius: '4px',
-      padding:      '8px 12px',
+    <div className="glass-card" style={{
+      padding:      '12px 16px',
       fontFamily:   'JetBrains Mono, monospace',
-      fontSize:     '12px',
+      fontSize:     '13px',
+      border:       '1px solid var(--border)',
     }}>
-      <div style={{ color: '#A8A29E', marginBottom: '4px' }}>{entry.payload.name}</div>
-      <div style={{ color: '#F59E0B' }}>{entry.value.toFixed(2)} ms</div>
+      <div style={{ color: 'var(--text-muted)', marginBottom: '4px' }}>{entry.payload.name}</div>
+      <div style={{ color: 'var(--accent-dim)', fontWeight: 600 }}>{entry.value.toFixed(2)} ms</div>
     </div>
   );
 }
@@ -58,9 +55,9 @@ export default function ResultsDashboard({ result }) {
 
   // ── Timing chart data ────────────────────────────────────────────────────
   const chartData = [
-    { name: 'sequential', value: metrics.sequential_time_ms, fill: '#44403C' },
-    { name: 'parallel',   value: metrics.parallel_time_ms,   fill: '#F59E0B' },
-    { name: 'mmap',       value: mmap_time_ms,               fill: '#4ADE80' },
+    { name: 'sequential', value: metrics.sequential_time_ms, fill: 'var(--text-dim)' },
+    { name: 'parallel',   value: metrics.parallel_time_ms,   fill: 'var(--accent)' },
+    { name: 'mmap',       value: mmap_time_ms,               fill: 'var(--success)' },
   ];
 
   // ── CSV export ───────────────────────────────────────────────────────────
@@ -94,16 +91,16 @@ export default function ResultsDashboard({ result }) {
         alignItems: 'center',
         flexWrap:   'wrap',
       }}>
-        <span style={{ fontSize: '12px', fontFamily: 'JetBrains Mono, monospace', color: '#78716C' }}>
+        <span style={{ fontSize: '13px', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-primary)', fontWeight: 500 }}>
           {filename}
         </span>
-        <span style={{ fontSize: '12px', fontFamily: 'JetBrains Mono, monospace', color: '#44403C' }}>
+        <span style={{ fontSize: '12px', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-muted)' }}>
           {file_size_kb?.toLocaleString()} KB
         </span>
-        <span style={{ fontSize: '12px', fontFamily: 'JetBrains Mono, monospace', color: '#44403C' }}>
+        <span style={{ fontSize: '12px', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-muted)' }}>
           {total_lines?.toLocaleString()} lines
         </span>
-        <span style={{ fontSize: '12px', fontFamily: 'JetBrains Mono, monospace', color: '#44403C' }}>
+        <span style={{ fontSize: '12px', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-muted)' }}>
           {metrics.num_threads}T
         </span>
       </div>
@@ -146,11 +143,8 @@ export default function ResultsDashboard({ result }) {
       {/* ── Section 2: Log level breakdown ──────────────────────────────── */}
       <div>
         <SectionLabel text="log level breakdown" />
-        <div style={{
-          background:   '#292524',
-          border:       '1px solid #44403C',
-          borderRadius: '6px',
-          padding:      '16px',
+        <div className="glass-card" style={{
+          padding:      '20px',
         }}>
           <LogLevelBar counts={counts} total={total_lines} />
         </div>
@@ -159,27 +153,24 @@ export default function ResultsDashboard({ result }) {
       {/* ── Section 3: Timing comparison chart ──────────────────────────── */}
       <div>
         <SectionLabel text="timing comparison" />
-        <div style={{
-          background:   '#292524',
-          border:       '1px solid #44403C',
-          borderRadius: '6px',
-          padding:      '16px',
+        <div className="glass-card" style={{
+          padding:      '20px',
         }}>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={chartData} margin={{ top: 10, right: 16, left: 0, bottom: 8 }}
               barCategoryGap="40%">
               <XAxis
                 dataKey="name"
-                axisLine={{ stroke: '#44403C' }}
+                axisLine={{ stroke: 'var(--border-subtle)' }}
                 tickLine={false}
-                tick={{ fill: '#78716C', fontFamily: 'JetBrains Mono', fontSize: 11 }}
+                tick={{ fill: 'var(--text-muted)', fontFamily: 'JetBrains Mono', fontSize: 11 }}
               />
               <YAxis
-                axisLine={{ stroke: '#44403C' }}
+                axisLine={{ stroke: 'var(--border-subtle)' }}
                 tickLine={false}
-                tick={{ fill: '#78716C', fontFamily: 'JetBrains Mono', fontSize: 11 }}
+                tick={{ fill: 'var(--text-muted)', fontFamily: 'JetBrains Mono', fontSize: 11 }}
                 unit=" ms"
-                width={60}
+                width={70}
               />
               <Tooltip content={<TimingTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
               <Bar dataKey="value" radius={[3, 3, 0, 0]}>
@@ -209,23 +200,20 @@ export default function ResultsDashboard({ result }) {
       {/* ── Section 4: Raw output table ──────────────────────────────────── */}
       <div>
         <SectionLabel text="raw output" />
-        <div style={{
-          background:   '#111110',
-          border:       '1px solid #44403C',
-          borderRadius: '6px',
-          padding:      '12px 16px',
+        <div className="glass-card" style={{
+          padding:      '16px 20px',
           fontFamily:   'JetBrains Mono, monospace',
-          fontSize:     '12px',
+          fontSize:     '13px',
         }}>
           {/* Header */}
           <div style={{
             display:             'grid',
             gridTemplateColumns: '100px 1fr 80px',
             gap:                 '8px',
-            color:               '#78716C',
-            marginBottom:        '8px',
+            color:               'var(--text-muted)',
+            marginBottom:        '12px',
             paddingBottom:       '8px',
-            borderBottom:        '1px solid #2C2A28',
+            borderBottom:        '1px solid var(--border-subtle)',
           }}>
             <span>level</span>
             <span style={{ textAlign: 'right' }}>count</span>
@@ -256,11 +244,11 @@ export default function ResultsDashboard({ result }) {
             display:             'grid',
             gridTemplateColumns: '100px 1fr 80px',
             gap:                 '8px',
-            color:               '#FAFAF9',
-            marginTop:           '8px',
-            paddingTop:          '8px',
-            borderTop:           '1px solid #2C2A28',
-            fontWeight:          500,
+            color:               'var(--text-primary)',
+            marginTop:           '12px',
+            paddingTop:          '12px',
+            borderTop:           '1px solid var(--border-subtle)',
+            fontWeight:          600,
           }}>
             <span>total</span>
             <span style={{ textAlign: 'right' }}>{total_lines?.toLocaleString()}</span>
@@ -269,27 +257,49 @@ export default function ResultsDashboard({ result }) {
         </div>
 
         {/* CSV export */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px' }}>
           <button
             onClick={exportCSV}
+            className="outfit"
             style={{
-              background:   'transparent',
-              color:        '#A8A29E',
-              border:       '1px solid #44403C',
-              borderRadius: '4px',
-              padding:      '5px 12px',
-              fontSize:     '12px',
-              fontFamily:   'Inter, sans-serif',
+              background:   'var(--bg-surface)',
+              color:        'var(--text-primary)',
+              border:       '1px solid var(--border)',
+              borderRadius: '6px',
+              padding:      '6px 14px',
+              fontSize:     '13px',
+              fontWeight:   500,
               cursor:       'pointer',
-              transition:   'background 0.15s, color 0.15s',
+              transition:   'all 0.2s',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = '#3C3836'; e.currentTarget.style.color = '#FAFAF9'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#A8A29E'; }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.borderColor = 'var(--text-muted)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-surface)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
           >
             export csv
           </button>
         </div>
       </div>
+
+      {/* ── Section 5: File Preview ─────────────────────────────────────── */}
+      {result.file_preview && result.file_preview.length > 0 && (
+        <div>
+          <SectionLabel text="file preview (first 10 lines)" />
+          <div className="glass-card" style={{
+            padding:      '16px 20px',
+            fontFamily:   'JetBrains Mono, monospace',
+            fontSize:     '12px',
+            color:        'var(--text-muted)',
+            overflowX:    'auto',
+            whiteSpace:   'pre',
+            lineHeight:   '1.6',
+            background:   'var(--bg-base)'
+          }}>
+            {result.file_preview.map((line, idx) => (
+              <div key={idx}>{line}</div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
